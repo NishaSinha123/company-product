@@ -1,8 +1,9 @@
 {
-  "name": "companys",
+  "name": "company-product",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Full-stack inventory and order management system with Neon database integration",
   "scripts": {
     "dev": "concurrently \"npm run frontend\" \"npm run backend\"",
     "frontend": "vite",
