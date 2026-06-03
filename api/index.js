@@ -594,6 +594,8 @@ app.patch('/api/orders/:id/status', authenticateToken, (req, res, next) => {
     console.error('Update order status error:', err.message);
     res.status(400).json({ error: err.message || 'Internal server error.' });
   }
+});
+
 // Get Admin Reports/Statistics
 app.get('/api/admin/stats', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
