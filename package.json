@@ -10,7 +10,8 @@
     "backend": "nodemon api/index.js",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node api/index.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.0",

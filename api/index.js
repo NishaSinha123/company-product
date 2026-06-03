@@ -581,7 +581,7 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), asy
 // RUN THE EXPRESS SERVER
 // ==========================================
 const PORT = process.env.PORT || 5000;
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`[AasaMedChem Backend] Server running on port ${PORT}`);
   });
