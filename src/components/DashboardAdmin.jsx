@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../config';
 import { useAuth } from '../context/AuthProvider';
-import { Plus, Edit2, Trash2, Check, X, Beaker, AlertTriangle, AlertCircle, ShoppingBag, FolderSearch, RefreshCw, Layers } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X, Beaker, AlertTriangle, AlertCircle, ShoppingBag, FolderSearch, RefreshCw, Layers, ChevronDown } from 'lucide-react';
 import { UNIT_DIMENSIONS, UNIT_LABELS } from '../utils/conversions';
 
 export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: setActiveSubTab, isSeller = false }) {
