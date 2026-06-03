@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_number VARCHAR(100) UNIQUE NOT NULL,
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  seller_id UUID REFERENCES users(id) ON DELETE SET NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'completed')),
   total_amount NUMERIC(20, 2) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -100,13 +101,14 @@ export const initDb = async () => {
     await pool.query(schemaSql);
     console.log('Database tables verified/created successfully.');
 
-    // Dynamic constraint upgrade to ensure 'user' role is supported
+    // Dynamic constraint upgrade to ensure 'user' role is supported and seller_id column exists
     try {
       await pool.query(`
         ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
         ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'seller', 'user'));
+        ALTER TABLE orders ADD COLUMN IF NOT EXISTS seller_id UUID REFERENCES users(id) ON DELETE SET NULL;
       `);
-      console.log('Database role constraints upgraded to support General Users.');
+      console.log('Database role constraints and orders table upgraded to support General Users and Seller assignments.');
     } catch (constraintErr) {
       console.warn('Note: Could not alter role constraint dynamically:', constraintErr.message);
     }

@@ -50,7 +50,7 @@ export default function Navbar({ cartCount = 0, onCartClick = null, activeTab = 
       </div>
 
       {/* Navigation tabs for panels */}
-      {setActiveTab && (
+      {setActiveTab && user.role !== 'seller' && (
         <div style={{ display: 'flex', gap: '8px', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '8px' }}>
           <button
             className={`btn ${activeTab === 'products' ? 'btn-primary' : 'btn-secondary'}`}
@@ -69,6 +69,17 @@ export default function Navbar({ cartCount = 0, onCartClick = null, activeTab = 
             <FolderHeart size={14} />
             <span>{isAdmin ? 'Quotation Orders' : 'My Orders'}</span>
           </button>
+
+          {isAdmin && (
+            <button
+              className={`btn ${activeTab === 'reports' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '6px 14px', fontSize: '13px', borderRadius: '6px' }}
+              onClick={() => setActiveTab('reports')}
+            >
+              <ShieldAlert size={14} />
+              <span>Stats Reports</span>
+            </button>
+          )}
         </div>
       )}
 

@@ -13,6 +13,17 @@ function AppContent() {
   const [cartOpen, setCartOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('products'); // Global tab state ('products' or 'orders')
 
+  // Auto-route tabs based on user login role
+  React.useEffect(() => {
+    if (user) {
+      if (user.role === 'seller') {
+        setActiveTab('orders');
+      } else {
+        setActiveTab('products');
+      }
+    }
+  }, [user]);
+
   if (loading) {
     return (
       <div className="flex-center animate-fade-in" style={{ minHeight: '100vh', flexDirection: 'column', gap: '16px' }}>
@@ -29,6 +40,7 @@ function AppContent() {
   }
 
   const isAdmin = user.role === 'admin';
+  const isSeller = user.role === 'seller';
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -44,6 +56,12 @@ function AppContent() {
           <DashboardAdmin 
             activeTab={activeTab}
             setActiveTab={setActiveTab}
+          />
+        ) : isSeller ? (
+          <DashboardAdmin 
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            isSeller={true}
           />
         ) : (
           <DashboardSeller 

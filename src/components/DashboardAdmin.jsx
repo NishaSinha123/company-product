@@ -4,10 +4,14 @@ import { useAuth } from '../context/AuthProvider';
 import { Plus, Edit2, Trash2, Check, X, Beaker, AlertTriangle, AlertCircle, ShoppingBag, FolderSearch, RefreshCw, Layers } from 'lucide-react';
 import { UNIT_DIMENSIONS, UNIT_LABELS } from '../utils/conversions';
 
-export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: setActiveSubTab }) {
+export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: setActiveSubTab, isSeller = false }) {
   const { token } = useAuth();
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  
+  // Statistics States
+  const [stats, setStats] = useState({ buyerStats: [], sellerStats: [] });
+  const [loadingStats, setLoadingStats] = useState(false);
   
   // Products Loading & Error states
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -68,10 +72,36 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
     }
   };
 
+  const fetchStats = async () => {
+    setLoadingStats(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/stats`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Error fetching statistics:', err);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
     fetchOrders();
+    if (!isSeller) {
+      fetchStats();
+    }
   }, []);
+
+  useEffect(() => {
+    if (activeSubTab === 'reports' && !isSeller) {
+      fetchStats();
+    }
+  }, [activeSubTab]);
 
   // Open Form to Create Product
   const openCreateForm = () => {
@@ -212,6 +242,9 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
         // Refresh orders & products to update status and inventory numbers
         fetchOrders();
         fetchProducts();
+        if (!isSeller) {
+          fetchStats();
+        }
       } else {
         setOrderActionError(data.error || `Failed to update status to ${newStatus}.`);
       }
@@ -255,30 +288,47 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
       <div className="flex-between" style={{ marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'var(--font-display)' }}>
-            {activeSubTab === 'orders' ? 'Incoming Order Proposals' : 'Warehouse Inventory Stock'}
+            {isSeller 
+              ? 'Quotation Requests Queue' 
+              : activeSubTab === 'reports'
+              ? 'Sales & Usage Analytics'
+              : activeSubTab === 'orders' 
+              ? 'Incoming Order Proposals' 
+              : 'Warehouse Inventory Stock'}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            {activeSubTab === 'orders' 
+            {isSeller
+              ? 'As a sales representative, review user order proposals, inspect conversions, and confirm or reject them.'
+              : activeSubTab === 'reports'
+              ? 'Observe details on how much medicine general users took and how much sales reps confirmed.'
+              : activeSubTab === 'orders' 
               ? 'Review quotation items, inspect unit mathematical conversions, and approve/reject orders.' 
               : 'Add new items, adjust stock levels, configure pricing, and manage chemical catalogs.'}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button 
-            className={`btn ${activeSubTab === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveSubTab('orders')}
-          >
-            Quotation Requests Feed ({orders.length})
-          </button>
-          
-          <button 
-            className={`btn ${activeSubTab === 'products' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveSubTab('products')}
-          >
-            Manage Inventory Catalog
-          </button>
-        </div>
+        {!isSeller && (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              className={`btn ${activeSubTab === 'products' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setActiveSubTab('products')}
+            >
+              Manage Inventory Catalog
+            </button>
+            <button 
+              className={`btn ${activeSubTab === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setActiveSubTab('orders')}
+            >
+              Quotation Requests Feed ({orders.length})
+            </button>
+            <button 
+              className={`btn ${activeSubTab === 'reports' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setActiveSubTab('reports')}
+            >
+              Sales & Usage Reports
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}
@@ -341,8 +391,11 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
                         <span style={{ fontSize: '14px', fontWeight: 600, fontFamily: 'monospace', color: 'var(--color-primary)' }}>
                           {order.order_number}
                         </span>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          Placed by <strong>{order.seller_name}</strong> ({order.seller_email})
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span>Ordered by: <strong>{order.buyer_name || 'System User'}</strong> ({order.buyer_email || 'no-email'})</span>
+                          {order.seller_name && (
+                            <span>Confirmed by: <strong>{order.seller_name}</strong> ({order.seller_email})</span>
+                          )}
                         </div>
                       </div>
                       
@@ -796,6 +849,109 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* STATS REPORTS VIEW */}
+      {/* ========================================================================= */}
+      {!isSeller && activeSubTab === 'reports' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+          {loadingStats ? (
+            <div className="glass-panel flex-center" style={{ minHeight: '300px' }}>
+              <div className="spinner" />
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))',
+              gap: '24px'
+            }}>
+              {/* User Consumption Card */}
+              <div className="glass-panel" style={{ padding: '24px' }}>
+                <div style={{ marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '14px' }}>
+                  <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--color-primary)' }}>Medicine Consumption (General Users)</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Total chemical volume and orders completed per user account.</p>
+                </div>
+                
+                {stats.buyerStats.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '14px', padding: '20px 0' }}>No purchases logged yet.</p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="glass-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--panel-border)', textAlign: 'left' }}>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>User Profile</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', textAlign: 'center' }}>Orders</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', textAlign: 'right' }}>Total Quantity</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', textAlign: 'right' }}>Total Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stats.buyerStats.map(b => (
+                          <tr key={b.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                            <td style={{ padding: '14px 8px' }}>
+                              <div style={{ fontWeight: 600 }}>{b.buyer_name}</div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{b.buyer_email}</div>
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'center' }}>{b.total_orders}</td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
+                              {parseFloat(b.total_quantity).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--color-secondary)' }}>
+                              ₹{parseFloat(b.total_spend).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Seller Achievement Card */}
+              <div className="glass-panel" style={{ padding: '24px' }}>
+                <div style={{ marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '14px' }}>
+                  <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--color-cyan)' }}>Sales Summary (Sellers / Reps)</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>Total chemical volume and values confirmed by sales representatives.</p>
+                </div>
+                
+                {stats.sellerStats.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '14px', padding: '20px 0' }}>No sales logged yet.</p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="glass-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--panel-border)', textAlign: 'left' }}>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>Sales Rep</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', textAlign: 'center' }}>Confirmed</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', textAlign: 'right' }}>Quantity Sold</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', textAlign: 'right' }}>Total Sales</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stats.sellerStats.map(s => (
+                          <tr key={s.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                            <td style={{ padding: '14px 8px' }}>
+                              <div style={{ fontWeight: 600 }}>{s.seller_name}</div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{s.seller_email}</div>
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'center' }}>{s.total_sales_orders}</td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
+                              {parseFloat(s.total_quantity_sold).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '14px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--color-cyan)' }}>
+                              ₹{parseFloat(s.total_sales_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

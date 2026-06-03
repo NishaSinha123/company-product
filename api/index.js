@@ -334,25 +334,31 @@ app.delete('/api/products/:id', authenticateToken, requireRole('admin'), async (
 // ORDER / QUOTATION PROPOSALS ENDPOINTS
 // ==========================================
 
-// Get Quotation Requests (Admins inspect all proposals, sellers/users check their own list)
+// Get Quotation Requests (Admins and Sellers inspect all proposals, users check their own list)
 app.get('/api/orders', authenticateToken, async (req, res) => {
   try {
     let ordersQuery = '';
     let queryParams = [];
 
-    if (req.user.role === 'admin') {
+    if (req.user.role === 'admin' || req.user.role === 'seller') {
       ordersQuery = `
-        SELECT o.*, u.name as seller_name, u.email as seller_email
+        SELECT o.*, 
+               u_buyer.name as buyer_name, u_buyer.email as buyer_email,
+               u_seller.name as seller_name, u_seller.email as seller_email
         FROM orders o
-        LEFT JOIN users u ON o.user_id = u.id
+        LEFT JOIN users u_buyer ON o.user_id = u_buyer.id
+        LEFT JOIN users u_seller ON o.seller_id = u_seller.id
         ORDER BY o.created_at DESC
       `;
     } else {
-      // Sellers and General Users retrieve only their personal checkouts
+      // General Users retrieve only their personal checkouts
       ordersQuery = `
-        SELECT o.*, u.name as seller_name, u.email as seller_email
+        SELECT o.*, 
+               u_buyer.name as buyer_name, u_buyer.email as buyer_email,
+               u_seller.name as seller_name, u_seller.email as seller_email
         FROM orders o
-        LEFT JOIN users u ON o.user_id = u.id
+        LEFT JOIN users u_buyer ON o.user_id = u_buyer.id
+        LEFT JOIN users u_seller ON o.seller_id = u_seller.id
         WHERE o.user_id = $1
         ORDER BY o.created_at DESC
       `;
@@ -490,9 +496,14 @@ app.post('/api/orders', authenticateToken, (req, res, next) => {
   }
 });
 
-// Update Order Status & Handle Stock Movements (Admin Only)
+// Update Order Status & Handle Stock Movements (Admin and Sellers)
 // Transitions: pending -> approved/completed (deducts stock), approved/completed -> rejected/pending (returns stock)
-app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), async (req, res) => {
+app.patch('/api/orders/:id/status', authenticateToken, (req, res, next) => {
+  if (req.user.role !== 'admin' && req.user.role !== 'seller') {
+    return res.status(403).json({ error: "Forbidden: Only admins and sellers can confirm order status." });
+  }
+  next();
+}, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body; // 'approved', 'rejected', 'completed', 'pending'
 
@@ -561,11 +572,19 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), asy
         }
       }
 
-      // Update order status field
-      const updatedOrder = await client.query(
-        'UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-        [status, id]
-      );
+      // Update order status field and record who updated it if they are a seller
+      let updatedOrder;
+      if (req.user.role === 'seller') {
+        updatedOrder = await client.query(
+          'UPDATE orders SET status = $1, seller_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+          [status, req.user.id, id]
+        );
+      } else {
+        updatedOrder = await client.query(
+          'UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+          [status, id]
+        );
+      }
       
       return updatedOrder.rows[0];
     });
@@ -574,6 +593,43 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), asy
   } catch (err) {
     console.error('Update order status error:', err.message);
     res.status(400).json({ error: err.message || 'Internal server error.' });
+  }
+// Get Admin Reports/Statistics
+app.get('/api/admin/stats', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const buyerStatsResult = await query(`
+      SELECT u.id, u.name as buyer_name, u.email as buyer_email,
+             COUNT(DISTINCT o.id) as total_orders,
+             COALESCE(SUM(oi.item_total), 0) as total_spend,
+             COALESCE(SUM(oi.base_quantity), 0) as total_quantity
+      FROM users u
+      LEFT JOIN orders o ON u.id = o.user_id AND o.status IN ('approved', 'completed')
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      WHERE u.role = 'user'
+      GROUP BY u.id, u.name, u.email
+      ORDER BY total_spend DESC
+    `);
+
+    const sellerStatsResult = await query(`
+      SELECT u.id, u.name as seller_name, u.email as seller_email,
+             COUNT(DISTINCT o.id) as total_sales_orders,
+             COALESCE(SUM(oi.item_total), 0) as total_sales_amount,
+             COALESCE(SUM(oi.base_quantity), 0) as total_quantity_sold
+      FROM users u
+      LEFT JOIN orders o ON u.id = o.seller_id AND o.status IN ('approved', 'completed')
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      WHERE u.role = 'seller'
+      GROUP BY u.id, u.name, u.email
+      ORDER BY total_sales_amount DESC
+    `);
+
+    res.json({
+      buyerStats: buyerStatsResult.rows,
+      sellerStats: sellerStatsResult.rows
+    });
+  } catch (err) {
+    console.error('Fetch admin stats error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
   }
 });
 
