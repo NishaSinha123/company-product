@@ -1,6 +1,10 @@
-import { Pool } from '@neondatabase/serverless';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import ws from 'ws';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+
+// Configure Neon to use the installed WebSocket driver in Node.js serverless environments
+neonConfig.webSocketConstructor = ws;
 
 dotenv.config();
 
