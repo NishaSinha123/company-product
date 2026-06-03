@@ -1,14 +1,8 @@
 import { Pool } from '@neondatabase/serverless';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -43,6 +37,54 @@ export const runTransaction = async (callback) => {
   }
 };
 
+// Database schema definition embedded as a string to avoid fs.readFileSync ENOENT crashes in serverless lambda environments
+const schemaSql = `
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'seller', 'user')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku VARCHAR(100) UNIQUE NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  category VARCHAR(100),
+  base_unit VARCHAR(20) NOT NULL CHECK (base_unit IN ('g', 'kg', 'mL', 'L', 'items')),
+  base_price NUMERIC(20, 4) NOT NULL,
+  stock_quantity NUMERIC(20, 8) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_number VARCHAR(100) UNIQUE NOT NULL,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'completed')),
+  total_amount NUMERIC(20, 2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+  ordered_unit VARCHAR(20) NOT NULL,
+  ordered_quantity NUMERIC(20, 8) NOT NULL,
+  conversion_factor NUMERIC(20, 8) NOT NULL,
+  base_quantity NUMERIC(20, 8) NOT NULL,
+  base_unit VARCHAR(20) NOT NULL,
+  base_price NUMERIC(20, 4) NOT NULL,
+  item_total NUMERIC(20, 2) NOT NULL
+);
+`;
+
 /**
  * Auto-initialize the database schema and seed initial test data.
  */
@@ -50,11 +92,7 @@ export const initDb = async () => {
   try {
     console.log('Initializing database schema...');
     
-    // Read the schema.sql file
-    const schemaPath = path.join(__dirname, 'schema.sql');
-    const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-    
-    // Run schema commands
+    // Run schema commands directly from memory
     await pool.query(schemaSql);
     console.log('Database tables verified/created successfully.');
 
