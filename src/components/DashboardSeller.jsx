@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../config';
 import { useAuth } from '../context/AuthProvider';
 import { Search, ShoppingCart, Trash2, CheckCircle2, AlertTriangle, RefreshCw, X, ChevronDown, ChevronUp, PackageCheck } from 'lucide-react';
 import { UNIT_DIMENSIONS, UNIT_LABELS, getConversionFactor, calculateItemTotal, convertQuantity } from '../utils/conversions';
@@ -26,7 +27,7 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
       if (search) queryParams.append('search', search);
       if (category) queryParams.append('category', category);
 
-      const response = await fetch(`/api/products?${queryParams.toString()}`, {
+      const response = await fetch(`${API_BASE}/api/products?${queryParams.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -48,7 +49,7 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
   const fetchOrders = async () => {
     setLoadingOrders(true);
     try {
-      const response = await fetch('/api/orders', {
+      const response = await fetch(`${API_BASE}/api/orders`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -166,7 +167,7 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
     };
 
     try {
-      const response = await fetch('/api/orders', {
+      const response = await fetch(`${API_BASE}/api/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

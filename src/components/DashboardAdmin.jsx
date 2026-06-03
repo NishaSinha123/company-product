@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../config';
 import { useAuth } from '../context/AuthProvider';
 import { Plus, Edit2, Trash2, Check, X, Beaker, AlertTriangle, AlertCircle, ShoppingBag, FolderSearch, RefreshCw, Layers } from 'lucide-react';
 import { UNIT_DIMENSIONS, UNIT_LABELS } from '../utils/conversions';
@@ -34,7 +35,7 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
   const fetchProducts = async () => {
     setLoadingProducts(true);
     try {
-      const response = await fetch('/api/products', {
+      const response = await fetch(`${API_BASE}/api/products`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -53,7 +54,7 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
   const fetchOrders = async () => {
     setLoadingOrders(true);
     try {
-      const response = await fetch('/api/orders', {
+      const response = await fetch(`${API_BASE}/api/orders`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -136,7 +137,7 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
     try {
       let response;
       if (editingProduct) {
-        response = await fetch(`/api/products/${editingProduct.id}`, {
+        response = await fetch(`${API_BASE}/api/products/${editingProduct.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -145,7 +146,7 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
           body: JSON.stringify(payload)
         });
       } else {
-        response = await fetch('/api/products', {
+        response = await fetch(`${API_BASE}/api/products`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -174,7 +175,7 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
     if (!window.confirm('Are you sure you want to delete this product? All stock values will be removed.')) return;
     
     try {
-      const response = await fetch(`/api/products/${productId}`, {
+      const response = await fetch(`${API_BASE}/api/products/${productId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -196,7 +197,7 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
     setProcessingOrderId(orderId);
 
     try {
-      const response = await fetch(`/api/orders/${orderId}/status`, {
+      const response = await fetch(`${API_BASE}/api/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
