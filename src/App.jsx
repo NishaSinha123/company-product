@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthProvider';
 import Navbar from './components/Navbar';
 import Login from './components/Login';
 import DashboardSeller from './components/DashboardSeller';
 import DashboardAdmin from './components/DashboardAdmin';
-
+ 
 function AppContent() {
   const { user, loading } = useAuth();
   
@@ -12,9 +12,9 @@ function AppContent() {
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('products'); // Global tab state ('products' or 'orders')
-
+ 
   // Auto-route tabs based on user login role
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
       if (user.role === 'seller') {
         setActiveTab('orders');
@@ -56,12 +56,6 @@ function AppContent() {
           <DashboardAdmin 
             activeTab={activeTab}
             setActiveTab={setActiveTab}
-          />
-        ) : isSeller ? (
-          <DashboardAdmin 
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            isSeller={true}
           />
         ) : (
           <DashboardSeller 

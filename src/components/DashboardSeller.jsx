@@ -17,6 +17,8 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [orderError, setOrderError] = useState('');
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [orderActionError, setOrderActionError] = useState('');
+  const [processingOrderId, setProcessingOrderId] = useState(null);
 
   // Dynamic Product Loader: Pulls the chemical catalog from the Express API
   // and filters it instantly by SKU, name, description, or category group.
@@ -207,6 +209,36 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
     }
   };
 
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
+    setOrderActionError('');
+    setProcessingOrderId(orderId);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        fetchOrders();
+        fetchProducts();
+      } else {
+        setOrderActionError(data.error || `Failed to update status to ${newStatus}.`);
+      }
+    } catch (err) {
+      console.error('Status update failed:', err);
+      setOrderActionError('Network error. Failed to update order status.');
+    } finally {
+      setProcessingOrderId(null);
+    }
+  };
+
   const getStatusBadgeClass = (status) => {
     switch (status) {
       case 'pending': return 'badge-warning';
@@ -224,11 +256,17 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
       <div className="flex-between" style={{ marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'var(--font-display)' }}>
-            {activeTab === 'products' ? 'Chemical & Supplies Catalog' : 'Order Quotations History'}
+            {activeTab === 'products' 
+              ? 'Chemical & Supplies Catalog' 
+              : user.role === 'seller'
+              ? 'Incoming Quotations Queue'
+              : 'Order Quotations History'}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
             {activeTab === 'products' 
               ? 'Browse, search, and calculate chemical components in multiple metric dimensions.' 
+              : user.role === 'seller'
+              ? 'Review client orders, inspect metric conversions, and confirm or reject quotations.'
               : 'Track the status, items list, and billing of submitted pricing quotes.'}
           </p>
         </div>
@@ -245,7 +283,7 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
             className={`btn ${activeTab === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setActiveTab('orders')}
           >
-            My Orders ({orders.length})
+            {user.role === 'seller' ? `Manage Orders (${orders.length})` : `My Orders (${orders.length})`}
           </button>
         </div>
       </div>
@@ -411,8 +449,14 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
                           <span style={{ fontSize: '14px', fontWeight: 600, fontFamily: 'monospace', color: 'var(--color-primary)' }}>
                             {order.order_number}
                           </span>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            Placed on {new Date(order.created_at).toLocaleString()}
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span>Placed on {new Date(order.created_at).toLocaleString()}</span>
+                            {user.role === 'seller' && (
+                              <span>Ordered by: <strong>{order.buyer_name || 'System User'}</strong> ({order.buyer_email || 'no-email'})</span>
+                            )}
+                            {order.seller_name && (
+                              <span>Confirmed by: <strong>{order.seller_name}</strong> ({order.seller_email})</span>
+                            )}
                           </div>
                         </div>
                         
@@ -494,6 +538,72 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
                             </tbody>
                           </table>
                         </div>
+
+                        {/* Order status update error banner */}
+                        {orderActionError && processingOrderId === order.id && (
+                          <div className="badge-danger animate-fade-in" style={{ marginTop: '16px', display: 'block', textTransform: 'none', letterSpacing: 'normal' }}>
+                            {orderActionError}
+                          </div>
+                        )}
+
+                        {/* Seller Workflow Actions */}
+                        {user.role === 'seller' && (
+                          <div style={{ 
+                            marginTop: '20px', 
+                            paddingTop: '16px', 
+                            borderTop: '1px solid var(--panel-border)', 
+                            display: 'flex', 
+                            justifyContent: 'flex-end', 
+                            gap: '12px',
+                            alignItems: 'center'
+                          }}>
+                            {order.status === 'pending' && (
+                              <>
+                                <button
+                                  className="btn btn-danger"
+                                  style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.2)' }}
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'rejected')}
+                                  disabled={processingOrderId === order.id}
+                                >
+                                  Reject Order
+                                </button>
+                                <button
+                                  className="btn btn-success"
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'approved')}
+                                  disabled={processingOrderId === order.id}
+                                >
+                                  Approve & Deduct Stock
+                                </button>
+                              </>
+                            )}
+
+                            {order.status === 'approved' && (
+                              <>
+                                <button
+                                  className="btn btn-secondary"
+                                  style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#a5b4fc' }}
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'pending')}
+                                  disabled={processingOrderId === order.id}
+                                >
+                                  Restore to Pending
+                                </button>
+                                <button
+                                  className="btn btn-cyan"
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'completed')}
+                                  disabled={processingOrderId === order.id}
+                                >
+                                  Mark as Completed
+                                </button>
+                              </>
+                            )}
+
+                            {(order.status === 'completed' || order.status === 'rejected') && (
+                              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                                Processed as <strong>{order.status.toUpperCase()}</strong>.
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

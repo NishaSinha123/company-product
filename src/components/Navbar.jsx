@@ -50,7 +50,7 @@ export default function Navbar({ cartCount = 0, onCartClick = null, activeTab = 
       </div>
 
       {/* Navigation tabs for panels */}
-      {setActiveTab && user.role !== 'seller' && (
+      {setActiveTab && (
         <div style={{ display: 'flex', gap: '8px', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '8px' }}>
           <button
             className={`btn ${activeTab === 'products' ? 'btn-primary' : 'btn-secondary'}`}
@@ -106,7 +106,7 @@ export default function Navbar({ cartCount = 0, onCartClick = null, activeTab = 
           </span>
         )}
 
-        {/* Cart Trigger (Sellers Only) */}
+        {/* Cart Trigger (Sellers & Users) */}
         {!isAdmin && onCartClick && (
           <button 
             className="btn btn-secondary" 
