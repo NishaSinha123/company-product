@@ -17,7 +17,8 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
   const [orderError, setOrderError] = useState('');
   const [placingOrder, setPlacingOrder] = useState(false);
 
-  // Fetch Products
+  // Dynamic Product Loader: Pulls the chemical catalog from the Express API
+  // and filters it instantly by SKU, name, description, or category group.
   const fetchProducts = async () => {
     setLoadingProducts(true);
     try {
@@ -43,7 +44,7 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
     }
   };
 
-  // Fetch Orders
+  // History Loader: Fetches all quotations submitted by the logged-in user.
   const fetchOrders = async () => {
     setLoadingOrders(true);
     try {
@@ -71,7 +72,7 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
     }
   }, [activeTab]);
 
-  // Cart operations
+  // Cart operations: Adds new products, updates quantities, and removes items.
   const addToCart = (product) => {
     const exists = cart.find(item => item.product.id === product.id);
     if (exists) {
@@ -111,7 +112,8 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
     return Object.keys(UNIT_DIMENSIONS).filter(unit => UNIT_DIMENSIONS[unit] === dimension);
   };
 
-  // Calculate cart totals
+  // Real-time Conversion Engine: Runs dynamically as the user types a quantity
+  // or switches metric units (e.g. grams vs kilograms), showing the math breakdown.
   const getCartTotals = () => {
     let total = 0;
     let hasStockErrors = false;
@@ -147,7 +149,8 @@ export default function DashboardSeller({ cart, setCart, cartOpen, setCartOpen, 
 
   const { items: cartItemsWithCalculations, totalAmount, hasStockErrors } = getCartTotals();
 
-  // Submit Order
+  // Checkout Handler: Sends the quotation items to the backend database transaction,
+  // clears the shopping cart, and fires a confetti party on successful placement!
   const handlePlaceOrder = async () => {
     if (cart.length === 0 || hasStockErrors || placingOrder) return;
     

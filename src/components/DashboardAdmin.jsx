@@ -29,7 +29,8 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
   const [orderActionError, setOrderActionError] = useState('');
   const [processingOrderId, setProcessingOrderId] = useState(null);
 
-  // Fetch Products
+  // Inventory Lister: Pulls all registered chemicals and stock levels
+  // from our PostgreSQL catalog to display them in the management table.
   const fetchProducts = async () => {
     setLoadingProducts(true);
     try {
@@ -47,7 +48,8 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
     }
   };
 
-  // Fetch Orders
+  // Requests Feed: Pulls all submitted quotations from sellers and general users
+  // to list them in the admin reviews dashboard.
   const fetchOrders = async () => {
     setLoadingOrders(true);
     try {
@@ -98,7 +100,8 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
     setProductFormOpen(true);
   };
 
-  // Submit Product Form (Create / Edit)
+  // Product Save Controller: Sends new or edited chemical profile details (SKU, name,
+  // description, base price, and current stock) to the backend database.
   const handleProductSubmit = async (e) => {
     e.preventDefault();
     if (!sku || !name || !baseUnit || basePrice === '' || stockQuantity === '') {
@@ -186,7 +189,8 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
     }
   };
 
-  // Update Order Status
+  // Order Status Auditor: Coordinates status transitions (e.g. approving a quote,
+  // which executes a backend stock check and decrements warehouse inventory).
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
     setOrderActionError('');
     setProcessingOrderId(orderId);
@@ -218,7 +222,8 @@ export default function DashboardAdmin({ activeTab: activeSubTab, setActiveTab: 
     }
   };
 
-  // Check if there is enough stock for a pending item
+  // Verification Auditor: Compares the converted order items against the active
+  // warehouse stock levels to check if we have enough stock before approving.
   const checkItemStockSufficiency = (item) => {
     const matchedProduct = products.find(p => p.id === item.product_id);
     if (!matchedProduct) return { exists: false, sufficient: false, stock: 0 };

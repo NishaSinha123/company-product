@@ -6,15 +6,18 @@ import dotenv from 'dotenv';
 import { query, runTransaction, initDb } from './db.js';
 import { areUnitsCompatible, getConversionFactor, calculateItemTotal } from './utils/conversions.js';
 
+// Load our local keys and configs from the environment file (.env)
 dotenv.config();
 
 const app = express();
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
+// Set up standard Express middleware
+app.use(cors()); // Allow cross-origin requests from our Vite frontend dev server
+app.use(express.json()); // Parse incoming JSON payloads automatically
 
-// Initialize Database on Startup
+// Lazy Database Initializer Middleware
+// This checks if the schema is verified and seeded on the very first incoming request.
+// It avoids timing conflicts and keeps the startup flow extremely smooth.
 let dbInitialized = false;
 app.use(async (req, res, next) => {
   if (!dbInitialized) {
@@ -28,29 +31,32 @@ app.use(async (req, res, next) => {
   next();
 });
 
-// Authentication Middleware
+// Authentication Token Validator Middleware
+// This intercepts private endpoints, extracts the Bearer token, and verifies it with JWT.
+// If valid, it attaches the authenticated user profile details directly to the request object (req.user).
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const token = authHeader && authHeader.split(' ')[1]; // Extract token from "Bearer <TOKEN>"
 
   if (!token) {
-    return res.status(401).json({ error: 'Access token required.' });
+    return res.status(401).json({ error: 'Access token required. Please sign in.' });
   }
 
   jwt.verify(token, process.env.JWT_SECRET || 'AasaMedChem_Secure_Jwt_Token_Secret_Key_2026', (err, user) => {
     if (err) {
-      return res.status(403).json({ error: 'Invalid or expired token.' });
+      return res.status(403).json({ error: 'Invalid or expired session token.' });
     }
     req.user = user;
     next();
   });
 };
 
-// Role-based Access Middleware
+// Access Control Guard (Role-based check)
+// Ensures the user has a specific authorized role before letting them pass to administrative pages.
 const requireRole = (role) => {
   return (req, res, next) => {
     if (!req.user || req.user.role !== role) {
-      return res.status(403).json({ error: `Forbidden: Requires ${role} role.` });
+      return res.status(403).json({ error: `Access forbidden: Requires '${role}' privilege level.` });
     }
     next();
   };
@@ -60,29 +66,32 @@ const requireRole = (role) => {
 // AUTHENTICATION ENDPOINTS
 // ==========================================
 
-// Register a new user (Open for testing, or admin creates)
+// Register a New Account
+// Accepts: email, password, name, role ('admin', 'seller', or 'user')
 app.post('/api/auth/register', async (req, res) => {
   const { email, password, name, role } = req.body;
 
+  // Make sure they filled in everything
   if (!email || !password || !name || !role) {
     return res.status(400).json({ error: 'All fields (email, password, name, role) are required.' });
   }
 
+  // Validate the chosen role matches our database check constraint definitions
   if (role !== 'admin' && role !== 'seller' && role !== 'user') {
     return res.status(400).json({ error: "Invalid role. Must be 'admin', 'seller', or 'user'." });
   }
 
   try {
-    // Check if user already exists
+    // Check if the email is already in use
     const existing = await query('SELECT * FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'User with this email already exists.' });
     }
 
-    // Hash password
+    // Securely hash the password before inserting
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Save user
+    // Save the new user details in our PostgreSQL database
     const result = await query(
       `INSERT INTO users (email, password_hash, name, role) 
        VALUES ($1, $2, $3, $4) RETURNING id, email, name, role, created_at`,
@@ -91,7 +100,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const user = result.rows[0];
 
-    // Generate JWT
+    // Sign a fresh session token so they are immediately logged in
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name },
       process.env.JWT_SECRET || 'AasaMedChem_Secure_Jwt_Token_Secret_Key_2026',
@@ -105,7 +114,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Login
+// Authenticate Credentials (Log In)
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -114,6 +123,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
+    // Find the record by email
     const result = await query('SELECT * FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid email or password.' });
@@ -121,13 +131,13 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    // Verify password
+    // Verify hash matches
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Generate JWT
+    // Issue a session JWT
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name },
       process.env.JWT_SECRET || 'AasaMedChem_Secure_Jwt_Token_Secret_Key_2026',
@@ -150,12 +160,12 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Get Current User Profile
+// Resolve Active Session Profile
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
     const result = await query('SELECT id, email, name, role, created_at FROM users WHERE id = $1', [req.user.id]);
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).json({ error: 'User profile not found.' });
     }
     res.json(result.rows[0]);
   } catch (err) {
@@ -165,21 +175,23 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 });
 
 // ==========================================
-// PRODUCT ENDPOINTS
+// PRODUCT INVENTORY ENDPOINTS
 // ==========================================
 
-// Get Products (Search, Filter)
+// Get Products Catalog (Supports instant text search and categories filter)
 app.get('/api/products', authenticateToken, async (req, res) => {
   const { search, category } = req.query;
   
   let queryString = 'SELECT * FROM products';
   const queryParams = [];
-
   const conditions = [];
+
+  // Build the WHERE clause dynamically based on filters
   if (search) {
     queryParams.push(`%${search}%`);
     conditions.push(`(name ILIKE $${queryParams.length} OR sku ILIKE $${queryParams.length} OR description ILIKE $${queryParams.length})`);
   }
+  
   if (category) {
     queryParams.push(category);
     conditions.push(`category = $${queryParams.length}`);
@@ -189,6 +201,7 @@ app.get('/api/products', authenticateToken, async (req, res) => {
     queryString += ' WHERE ' + conditions.join(' AND ');
   }
 
+  // Sort them cleanly so the listing doesn't jump around
   queryString += ' ORDER BY category ASC, name ASC';
 
   try {
@@ -200,7 +213,7 @@ app.get('/api/products', authenticateToken, async (req, res) => {
   }
 });
 
-// Create Product (Admin Only)
+// Create a New Product SKU (Admin Only)
 app.post('/api/products', authenticateToken, requireRole('admin'), async (req, res) => {
   const { sku, name, description, category, base_unit, base_price, stock_quantity } = req.body;
 
@@ -208,18 +221,19 @@ app.post('/api/products', authenticateToken, requireRole('admin'), async (req, r
     return res.status(400).json({ error: 'SKU, Name, Base Unit, Price, and Stock are required.' });
   }
 
-  // Validate base_unit
+  // Validate base unit matches our dimensional types
   const validUnits = ['g', 'kg', 'mL', 'L', 'items'];
   if (!validUnits.includes(base_unit)) {
     return res.status(400).json({ error: `Invalid unit. Supported: ${validUnits.join(', ')}` });
   }
 
+  // Prevent illogical negative settings
   if (parseFloat(base_price) < 0 || parseFloat(stock_quantity) < 0) {
     return res.status(400).json({ error: 'Price and stock quantity must be non-negative.' });
   }
 
   try {
-    // Check if SKU is unique
+    // SKUs must be unique for correct tracking
     const existingSku = await query('SELECT id FROM products WHERE sku = $1', [sku]);
     if (existingSku.rows.length > 0) {
       return res.status(400).json({ error: `Product with SKU '${sku}' already exists.` });
@@ -229,7 +243,7 @@ app.post('/api/products', authenticateToken, requireRole('admin'), async (req, r
       `INSERT INTO products (sku, name, description, category, base_unit, base_price, stock_quantity)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [sku, name, description, category || 'Uncategorized', base_unit, base_price, stock_quantity]
+      [sku, name, description, category || 'General', base_unit, base_price, stock_quantity]
     );
 
     res.status(201).json(result.rows[0]);
@@ -239,7 +253,7 @@ app.post('/api/products', authenticateToken, requireRole('admin'), async (req, r
   }
 });
 
-// Update Product (Admin Only)
+// Update Product Details (Admin Only)
 app.put('/api/products/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   const { sku, name, description, category, base_unit, base_price, stock_quantity } = req.body;
@@ -248,7 +262,6 @@ app.put('/api/products/:id', authenticateToken, requireRole('admin'), async (req
     return res.status(400).json({ error: 'SKU, Name, Base Unit, Price, and Stock are required.' });
   }
 
-  // Validate unit
   const validUnits = ['g', 'kg', 'mL', 'L', 'items'];
   if (!validUnits.includes(base_unit)) {
     return res.status(400).json({ error: `Invalid unit. Supported: ${validUnits.join(', ')}` });
@@ -259,7 +272,7 @@ app.put('/api/products/:id', authenticateToken, requireRole('admin'), async (req
   }
 
   try {
-    // Check product exists
+    // Verify product exists
     const checkProduct = await query('SELECT * FROM products WHERE id = $1', [id]);
     if (checkProduct.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found.' });
@@ -267,7 +280,7 @@ app.put('/api/products/:id', authenticateToken, requireRole('admin'), async (req
 
     const oldProduct = checkProduct.rows[0];
 
-    // Check SKU uniqueness if changed
+    // Check SKU uniqueness if they changed it
     if (oldProduct.sku !== sku) {
       const existingSku = await query('SELECT id FROM products WHERE sku = $1 AND id <> $2', [sku, id]);
       if (existingSku.rows.length > 0) {
@@ -275,7 +288,7 @@ app.put('/api/products/:id', authenticateToken, requireRole('admin'), async (req
       }
     }
 
-    // Verify unit dimension compatibility if changed
+    // Lock unit dimension modifications to avoid breaking existing orders (e.g. weight to volume)
     if (oldProduct.base_unit !== base_unit) {
       if (!areUnitsCompatible(oldProduct.base_unit, base_unit)) {
         return res.status(400).json({
@@ -318,10 +331,10 @@ app.delete('/api/products/:id', authenticateToken, requireRole('admin'), async (
 });
 
 // ==========================================
-// ORDER / QUOTATION ENDPOINTS
+// ORDER / QUOTATION PROPOSALS ENDPOINTS
 // ==========================================
 
-// Get Orders (Admin sees all, Seller sees only their own)
+// Get Quotation Requests (Admins inspect all proposals, sellers/users check their own list)
 app.get('/api/orders', authenticateToken, async (req, res) => {
   try {
     let ordersQuery = '';
@@ -335,12 +348,13 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
         ORDER BY o.created_at DESC
       `;
     } else {
+      // Sellers and General Users retrieve only their personal checkouts
       ordersQuery = `
         SELECT o.*, u.name as seller_name, u.email as seller_email
         FROM orders o
         LEFT JOIN users u ON o.user_id = u.id
         WHERE o.user_id = $1
-        ORDER o.created_at DESC
+        ORDER BY o.created_at DESC
       `;
       queryParams.push(req.user.id);
     }
@@ -348,7 +362,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
     const ordersResult = await query(ordersQuery, queryParams);
     const orders = ordersResult.rows;
 
-    // Fetch order items for each order
+    // Fetch sub-items for each order to build the detailed listings
     for (const order of orders) {
       const itemsResult = await query(
         `SELECT oi.*, p.name as product_name, p.sku as product_sku
@@ -367,7 +381,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
-// Create Order/Quotation (Seller or User)
+// Submit a New Quotation Order (Authorized for Sellers or General Users)
 app.post('/api/orders', authenticateToken, (req, res, next) => {
   if (req.user.role !== 'seller' && req.user.role !== 'user') {
     return res.status(403).json({ error: "Forbidden: Only sellers and general users can place order quotations." });
@@ -381,10 +395,10 @@ app.post('/api/orders', authenticateToken, (req, res, next) => {
   }
 
   try {
-    // We will validate products and perform calculations in memory first
     const preparedItems = [];
     let orderTotal = 0;
 
+    // 1. Verify item configurations and compute prices in memory
     for (const item of items) {
       const { productId, orderedUnit, orderedQuantity } = item;
       
@@ -393,7 +407,6 @@ app.post('/api/orders', authenticateToken, (req, res, next) => {
         return res.status(400).json({ error: 'Invalid product details, unit, or quantity in cart.' });
       }
 
-      // Fetch product to verify
       const prodResult = await query('SELECT * FROM products WHERE id = $1', [productId]);
       if (prodResult.rows.length === 0) {
         return res.status(404).json({ error: `Product with ID '${productId}' not found.` });
@@ -401,19 +414,19 @@ app.post('/api/orders', authenticateToken, (req, res, next) => {
 
       const product = prodResult.rows[0];
 
-      // Verify unit dimension compatibility
+      // Block dimension mismatch (e.g. ordering liters of solid salt)
       if (!areUnitsCompatible(orderedUnit, product.base_unit)) {
         return res.status(400).json({
           error: `Incompatible unit dimensions for product '${product.name}'. Ordered: '${orderedUnit}', Base: '${product.base_unit}'.`
         });
       }
 
-      // Perform conversion and pricing calculations
+      // Convert quantity and calculate total price
       const conversionFactor = getConversionFactor(orderedUnit, product.base_unit);
       const baseQuantity = qVal * conversionFactor;
       const itemTotal = calculateItemTotal(qVal, orderedUnit, product.base_unit, product.base_price);
       
-      // Check stock at checkout placement
+      // Stock check on submission to warn user
       const currentStock = parseFloat(product.stock_quantity);
       if (baseQuantity > currentStock) {
         return res.status(400).json({
@@ -435,11 +448,11 @@ app.post('/api/orders', authenticateToken, (req, res, next) => {
       orderTotal += itemTotal;
     }
 
-    // Insert Order & Order Items using a Database Transaction
+    // 2. Perform DB commits inside a single Transaction Block
     const orderNumber = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newOrder = await runTransaction(async (client) => {
-      // 1. Insert order
+      // Create main order proposal
       const orderInsert = await client.query(
         `INSERT INTO orders (order_number, user_id, status, total_amount) 
          VALUES ($1, $2, 'pending', $3) 
@@ -448,7 +461,7 @@ app.post('/api/orders', authenticateToken, (req, res, next) => {
       );
       const order = orderInsert.rows[0];
 
-      // 2. Insert items
+      // Save item details as a historical audit snapshot
       for (const item of preparedItems) {
         await client.query(
           `INSERT INTO order_items (order_id, product_id, ordered_unit, ordered_quantity, conversion_factor, base_quantity, base_unit, base_price, item_total)
@@ -465,9 +478,6 @@ app.post('/api/orders', authenticateToken, (req, res, next) => {
             item.item_total
           ]
         );
-        
-        // Note: We do NOT deduct stock upon order creation (it is a pending quotation).
-        // Stock deduction will happen when the admin approves the order.
       }
 
       return order;
@@ -480,8 +490,8 @@ app.post('/api/orders', authenticateToken, (req, res, next) => {
   }
 });
 
-// Update Order Status (Admin Only)
-// Transitions: pending -> approved/completed (deducts stock), approved/completed -> rejected/pending (restores stock)
+// Update Order Status & Handle Stock Movements (Admin Only)
+// Transitions: pending -> approved/completed (deducts stock), approved/completed -> rejected/pending (returns stock)
 app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   const { status } = req.body; // 'approved', 'rejected', 'completed', 'pending'
@@ -492,7 +502,7 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), asy
   }
 
   try {
-    // Get current order and items
+    // Fetch order record
     const orderResult = await query('SELECT * FROM orders WHERE id = $1', [id]);
     if (orderResult.rows.length === 0) {
       return res.status(404).json({ error: 'Order not found.' });
@@ -508,17 +518,16 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), asy
     const itemsResult = await query('SELECT * FROM order_items WHERE order_id = $1', [id]);
     const items = itemsResult.rows;
 
+    // Run order status transition and stock audits inside a transaction
     const resultOrder = await runTransaction(async (client) => {
-      // 1. Handle stock movements
       const activeStates = ['approved', 'completed'];
-      
       const wasActive = activeStates.includes(oldStatus);
       const isNowActive = activeStates.includes(status);
 
       // Scenario A: Transitioning from Pending/Rejected to Approved/Completed (DEDUCT STOCK)
       if (!wasActive && isNowActive) {
         for (const item of items) {
-          // Fetch current stock
+          // Lock the product row for update to prevent concurrent race conditions
           const prodResult = await client.query('SELECT stock_quantity, name FROM products WHERE id = $1 FOR UPDATE', [item.product_id]);
           if (prodResult.rows.length === 0) {
             throw new Error(`Product for item not found.`);
@@ -532,7 +541,7 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), asy
             throw new Error(`Insufficient stock for product '${product.name}'. Available: ${stock} ${item.base_unit}, Required: ${reqQty} ${item.base_unit}.`);
           }
 
-          // Decrement stock
+          // Decrement stock levels
           await client.query(
             'UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
             [reqQty, item.product_id]
@@ -544,7 +553,7 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), asy
       if (wasActive && !isNowActive) {
         for (const item of items) {
           const reqQty = parseFloat(item.base_quantity);
-          // Increment stock
+          // Return the stock to database inventory
           await client.query(
             'UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2',
             [reqQty, item.product_id]
@@ -552,7 +561,7 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('admin'), asy
         }
       }
 
-      // 2. Update order status
+      // Update order status field
       const updatedOrder = await client.query(
         'UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
         [status, id]
