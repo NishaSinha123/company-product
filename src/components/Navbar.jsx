@@ -85,9 +85,13 @@ export default function Navbar({ cartCount = 0, onCartClick = null, activeTab = 
             <ShieldAlert size={12} />
             Admin
           </span>
-        ) : (
+        ) : user.role === 'seller' ? (
           <span className="badge badge-cyan">
             Seller
+          </span>
+        ) : (
+          <span className="badge badge-success">
+            User
           </span>
         )}
 

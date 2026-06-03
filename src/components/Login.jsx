@@ -371,6 +371,7 @@ export default function Login() {
                 disabled={isSubmitting}
                 style={{ cursor: 'pointer' }}
               >
+                <option value="user">General User / Client</option>
                 <option value="seller">Seller / Sales Representative</option>
                 <option value="admin">Admin / Warehouse Inspector</option>
               </select>

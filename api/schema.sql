@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(255) NOT NULL,
-  role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'seller')),
+  role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'seller', 'user')),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

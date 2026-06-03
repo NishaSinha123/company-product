@@ -68,8 +68,8 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'All fields (email, password, name, role) are required.' });
   }
 
-  if (role !== 'admin' && role !== 'seller') {
-    return res.status(400).json({ error: "Invalid role. Must be 'admin' or 'seller'." });
+  if (role !== 'admin' && role !== 'seller' && role !== 'user') {
+    return res.status(400).json({ error: "Invalid role. Must be 'admin', 'seller', or 'user'." });
   }
 
   try {
@@ -367,8 +367,13 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
-// Create Order/Quotation (Seller Only)
-app.post('/api/orders', authenticateToken, requireRole('seller'), async (req, res) => {
+// Create Order/Quotation (Seller or User)
+app.post('/api/orders', authenticateToken, (req, res, next) => {
+  if (req.user.role !== 'seller' && req.user.role !== 'user') {
+    return res.status(403).json({ error: "Forbidden: Only sellers and general users can place order quotations." });
+  }
+  next();
+}, async (req, res) => {
   const { items } = req.body; // Array of { productId, orderedUnit, orderedQuantity }
 
   if (!items || !Array.isArray(items) || items.length === 0) {

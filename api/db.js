@@ -58,6 +58,17 @@ export const initDb = async () => {
     await pool.query(schemaSql);
     console.log('Database tables verified/created successfully.');
 
+    // Dynamic constraint upgrade to ensure 'user' role is supported
+    try {
+      await pool.query(`
+        ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+        ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'seller', 'user'));
+      `);
+      console.log('Database role constraints upgraded to support General Users.');
+    } catch (constraintErr) {
+      console.warn('Note: Could not alter role constraint dynamically:', constraintErr.message);
+    }
+
     // Seed default users if users table is empty
     const userCountResult = await pool.query('SELECT COUNT(*) FROM users');
     const userCount = parseInt(userCountResult.rows[0].count, 10);
